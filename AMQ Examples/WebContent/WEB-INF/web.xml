@@ -33,8 +33,4 @@
 		<servlet-name>ServletAdaptor</servlet-name>
 		<url-pattern>/*</url-pattern>
 	</servlet-mapping>
-
-<!-- 	<listener>
-		<listener-class>edu.northwestern.eventhub.EventHubServletContextListener</listener-class>
-	</listener> -->
 </web-app>
