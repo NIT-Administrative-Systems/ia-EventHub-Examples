@@ -71,13 +71,8 @@ public class WebhookExample {
 			Response response = Response.notAcceptable(null).build();
 			return response;
 		}
-		//If the message contains the word "NoData" respond with a HTTP 204
 		//EventHub treats all response in the 2XX range as success so the message will be remove from your queue and 
 		//processing will continue normally
-		else if (Pattern.compile(Pattern.quote("NoData"), Pattern.CASE_INSENSITIVE).matcher(messageBody).find()) {
-			Response response = Response.noContent().build();
-			return response;
-		}
 		else {
 			//Message is removed from the queue and processing continues normally.
 			return Response.ok().entity(new SimpleResponse("Success")).build();
