@@ -9,14 +9,12 @@ import edu.northwestern.amq.AMQConsumer;
 import edu.northwestern.amq.AcknowledgeResult;
 import edu.northwestern.amq.MessageResult;
 
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class AMQConsumerTest {
 
-	private static AMQConsumer amqConsumer = null;
-
-	@Test
-	public void aagetMessage() {
-		try {
+	private AMQConsumer amqConsumer = null;
+	
+	private void createConsumer() {
+		if(amqConsumer == null) {
 			String topic = System.getProperty("edu.northwestern.topic");
 			String apiKey = System.getProperty("edu.northwestern.apikey");
 			String env = System.getProperty("edu.northwestern.env");
@@ -27,6 +25,14 @@ public class AMQConsumerTest {
 					.setTopic(topic)
 					.setAPIKey(apiKey)
 					.build();
+		}
+	}
+
+	@Test
+	public void getMessage() {
+		try {
+			createConsumer();
+
 			MessageResult messageResult = amqConsumer.getMessage();
 			
 			Assert.assertNotNull("MessageResult should not be null", messageResult);
@@ -41,7 +47,9 @@ public class AMQConsumerTest {
 	}
 	
 	@Test(expected = RuntimeException.class)
-	public void acknowledgeMessage() throws Exception {
+	public void deleteMessage() throws Exception {
+		createConsumer();
+
 		amqConsumer.acknowledgeMessage();
 	}
 }
