@@ -110,19 +110,19 @@ public class AMQConsumer {
         public AMQConsumer build() {
         	//Verify the object was completely instantiated.
         	if(consumer.apikey == null || consumer.apikey.trim().length() == 0) {
-        		throw new RuntimeException("APIKey is required.");
+        		throw new IllegalArgumentException("APIKey is required.");
         	}
         	
         	if(consumer.env == null) {
-        		throw new RuntimeException("Environment is required.");
+        		throw new IllegalArgumentException("Environment is required.");
         	}
         	
         	if(consumer.maxMessages > 400 || (consumer.maxMessages > 1 && !consumer.includeMetaData)) {
-        		throw new RuntimeException("Maximum number of messages to be retrieved cannot exceed 400.  If multiple messages are being requested includeMetaData must be set to true.");
+        		throw new IllegalArgumentException("Maximum number of messages to be retrieved cannot exceed 400.  If multiple messages are being requested includeMetaData must be set to true.");
         	}
 
         	if(consumer.topic == null || consumer.topic.trim().length() == 0) {
-        		throw new RuntimeException("Topic is required.");
+        		throw new IllegalArgumentException("Topic is required.");
         	}
 
         	//Create the HttpClient
@@ -253,7 +253,7 @@ public class AMQConsumer {
 	public MessageResult getMessage() throws InterruptedException {
 		
 		if(!autoAcknowledge && messageId != null) {
-			throw new RuntimeException();
+			throw new IllegalStateException("You should Acknowledge the previous message before requesting a new one.");
 		}
 
 		// Create the POST that will be sent to the server
@@ -404,7 +404,7 @@ public class AMQConsumer {
 	 * @return {@link AcknowledgeResult}
 	 * @throws Exception
 	 */
-	public AcknowledgeResult acknowledgeMessage() throws InterruptedException {
+	public AcknowledgeResult acknowledgeMessage() throws InterruptedException, IllegalStateException {
 
 		if(messageId != null) {
 			AcknowledgeResult ackResult = acknowledgeMessage(messageId, true);
@@ -415,7 +415,7 @@ public class AMQConsumer {
 			return ackResult;
 		}
 		else {
-			throw new RuntimeException();
+			throw new IllegalStateException("There are no messages to acknowledge.");
 		}
 	}
 
@@ -423,7 +423,7 @@ public class AMQConsumer {
 	 * Acknowledge the last message(s) returned
 	 * 
 	 * @return {@link AcknowledgeResult}
-	 * @throws Exception
+	 * @throws InterruptedException
 	 */
 	protected AcknowledgeResult acknowledgeMessage(String messageId, boolean fastForward) throws InterruptedException {
 		AcknowledgeResult ackResult = new AcknowledgeResult();
@@ -454,8 +454,6 @@ public class AMQConsumer {
 				}
 				// Special status message to indicate the message is no longer there
 				else if (getResponse.getStatusLine().getStatusCode() == Response.Status.GONE.getStatusCode()) {
-					//This should possibly be wrapped in an object to be able to convey that it was not deleted but gone.
-					//Or possibly throw a Custom Exception?
 					failureCount = 0;
 					done = true;
 					ackResult.setSuccess(true);
