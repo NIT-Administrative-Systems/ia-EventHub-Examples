@@ -278,9 +278,14 @@ public class AMQConsumer {
 				if (Family.familyOf(getResponse.getStatusLine().getStatusCode()) == Response.Status.Family.SUCCESSFUL) {
 					failureCount = 0;
 					done = true;
-	
-					// Check to see if the status code is a 406 "No Messages" "No Content" code
-					//If it is 406 than you have no messages.  Returning null?
+					
+					// If response 204, return empty messageResult 
+					if (getResponse.getStatusLine().getStatusCode() == NO_MESSAGE_STATUS_CODE) {
+						messageResult = new MessageResult();
+					}
+					
+					// Check to see if the status code is a 204 "No Messages" "No Content" code
+					//If it is 204 than you have no messages.  Returning null?
 					if (getResponse.getStatusLine().getStatusCode() != NO_MESSAGE_STATUS_CODE) {
 						//Pull out the Response body as a String
 						String responseString = EntityUtils.toString(getResponse.getEntity());
