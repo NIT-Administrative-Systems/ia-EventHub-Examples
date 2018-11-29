@@ -45,6 +45,16 @@ public class MessageResult implements EventHubResult {
 	public boolean hasAdditionalMessage() {
 		return hasAdditionalMessage;
 	}
+	
+	@JsonIgnore
+	public boolean hasMessage() {
+		if(messageCount > 0) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
 
 	public void hasAdditionalMessage(boolean hasAdditionalMessage) {
 		this.hasAdditionalMessage = hasAdditionalMessage;

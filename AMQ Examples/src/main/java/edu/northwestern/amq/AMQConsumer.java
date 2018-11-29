@@ -1,6 +1,7 @@
 package edu.northwestern.amq;
 
 import java.io.StringReader;
+import java.io.UnsupportedEncodingException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +18,9 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
@@ -42,6 +45,8 @@ public class AMQConsumer {
 	private static final int DEFAULT_MAX_MESSAGES = 1;
 	private static final String APIGEE_GET_URL_PATTERN = "https://northwestern-{0}.apigee.net/v1/event-hub/queue/{1}/message?includeMetaData={2}&count={3}&autoAcknowledge={4}";
 	private static final String APIGEE_DELETE_URL_PATTERN = "https://northwestern-{0}.apigee.net/v1/event-hub/queue/{1}/message/{2}?fastForward={3}";
+	private static final String APIGEE_MOVE_URL_PATTERN = "https://northwestern-{0}.apigee.net/v1/event-hub/queue/{1}/message/{2}/DLQ/{3}";
+	private static final String APIGEE_WRITE_URL_PATTERN = "https://northwestern-{0}.apigee.net/v1/event-hub/queue/{1}";
 
 	protected static final Logger logger = LoggerFactory.getLogger("logger");
 
@@ -244,6 +249,18 @@ public class AMQConsumer {
     	return mf.format(new Object[] { env, topic, messageId, fastForward });
 	}
 	
+	private String buildMoveURL(String messageId) {
+    	MessageFormat mf = new MessageFormat(APIGEE_MOVE_URL_PATTERN);
+
+    	return mf.format(new Object[] { env, topic, messageId, topic });
+	}
+	
+	private String buildWriteURL() {
+    	MessageFormat mf = new MessageFormat(APIGEE_WRITE_URL_PATTERN);
+
+    	return mf.format(new Object[] { env, topic });
+	}
+	
 	/**
 	 * Calls to this will return a message from the queue.  This object can and should be reused for subsequent calls will return additional messages
 	 * 
@@ -251,7 +268,8 @@ public class AMQConsumer {
 	 * @throws Exception
 	 */
 	public MessageResult getMessage() throws InterruptedException {
-		
+		logger.debug("Entering getMessage()");
+
 		if(!autoAcknowledge && messageId != null) {
 			throw new IllegalStateException("You should Acknowledge the previous message before requesting a new one.");
 		}
@@ -402,6 +420,24 @@ public class AMQConsumer {
 //			return null;
 //		}
 //	}
+
+	public void close() {
+
+	}
+	
+	/**
+	 * Use this method to indicate processing of the message was unsuccessful.  This resets internal state so you can safely
+	 * call getMessage again.
+	 * 
+	 */
+	public void rollback() {
+		if(autoAcknowledge || messageId == null) {
+			//Throw error 
+			throw new IllegalStateException("Message cannot be rollback when autoAcknowledge is true, or there is no message to rollback.");
+		}
+
+		messageId = null;
+	}
 	
 	/**
 	 * Acknowledge the last message(s) returned
@@ -414,6 +450,108 @@ public class AMQConsumer {
 		if(messageId != null) {
 			AcknowledgeResult ackResult = acknowledgeMessage(messageId, true);
 			
+			if(ackResult.isSuccess()) {
+				messageId = null;
+			}
+			return ackResult;
+		}
+		else {
+			throw new IllegalStateException("There are no messages to acknowledge.");
+		}
+	}
+	
+	public AcknowledgeResult acknowledgeAsPoison() throws InterruptedException, IllegalStateException {
+
+		if(messageId != null) {
+			AcknowledgeResult ackResult = new AcknowledgeResult();
+
+			// Create the POST that will be sent to the server
+			HttpPost postRequest = new HttpPost(buildMoveURL(messageId));
+
+			// Apigee API key used for authentication on Apigee
+			postRequest.addHeader("apikey", apikey);
+
+			// Exit condition for the loop. We should exit if the call is successful, or if we hit the maximum number of retries
+			boolean done = false;
+			int failureCount = 0;
+
+			do {
+				try {
+					// Call the service
+					HttpResponse getResponse = httpClient.execute(postRequest);
+
+					//Set the status code.  If we retry for some reason this will get overwritten
+					ackResult.setStatusCode(getResponse.getStatusLine().getStatusCode());
+
+					// Check to make sure we received a response in the 200 Family
+					if (Family.familyOf(getResponse.getStatusLine().getStatusCode()) == Response.Status.Family.SUCCESSFUL) {
+						failureCount = 0;
+						done = true;
+						ackResult.setSuccess(true);
+					}
+					// Special status message to indicate the message is no longer there
+					else if (getResponse.getStatusLine().getStatusCode() == Response.Status.GONE.getStatusCode()) {
+						failureCount = 0;
+						done = true;
+						ackResult.setSuccess(true);
+					}
+					// This will capture all the 500-level Server Error Status Codes.
+					else if (Family.familyOf(getResponse.getStatusLine().getStatusCode()) == Response.Status.Family.SERVER_ERROR) {
+						//Increment the failure counter.  Once we hit the retry limit we will want to break from the loop regardless
+						//of whether the calls were successful or not.
+						failureCount++;
+
+						//Retrieve the Response Body (if any) and log the body and status code
+						String responseBody = EntityUtils.toString(getResponse.getEntity());
+						logger.debug("Status Code: {}, Response Body: {}", getResponse.getStatusLine().getStatusCode(), responseBody);
+
+						//If we have reached the max number of retries we should log that and set the flag to true so we will break 
+						if (failureCount >= maxFailures) {
+							logger.debug("Too many errors, quiting.");
+
+							done = true;
+							ackResult.setSuccess(false);
+						}
+						//Otherwise pause the application for a the SLEEP_DURATION to provide time for things to recover before trying again.
+						else {
+							logger.debug("Sleeping for {} milliseconds before reprocessing.", (sleepDuration * failureCount));
+		
+							Thread.sleep(sleepDuration * failureCount);
+						}
+					}
+					// There was an unexpected result that should be handled in some way depending on your use case
+					else {
+						String responseBody = EntityUtils.toString(getResponse.getEntity());
+						logger.debug("Status Code: {}, Response Body: {}", getResponse.getStatusLine().getStatusCode(), responseBody);
+
+						done = true;
+						ackResult.setSuccess(false);
+					}
+				}
+				catch(Exception e) {
+					//Increment the failure counter.  Once we hit the retry limit we will want to break from the loop regardless
+					//of whether the calls were successful or not.
+					failureCount++;
+
+					//Retrieve the Response Body (if any) and log the body and status code
+					logger.debug("Status Code: {}, Response Body: {}", e.getMessage(), e);
+
+					//If we have reached the max number of retries we should log that and set the flag to true so we will break 
+					if (failureCount >= maxFailures) {
+						logger.debug("Too many errors, quiting.");
+
+						done = true;
+						ackResult.setSuccess(false);
+					}
+					//Otherwise pause the application for a the SLEEP_DURATION to provide time for things to recover before trying again.
+					else {
+						logger.debug("Sleeping for {} milliseconds before reprocessing.", (sleepDuration * failureCount));
+
+						Thread.sleep(sleepDuration * failureCount);
+					}
+				}
+			} while (!done);
+
 			if(ackResult.isSuccess()) {
 				messageId = null;
 			}
@@ -521,5 +659,110 @@ public class AMQConsumer {
 		} while (!done);
 
 		return ackResult;
+	}
+
+	public AcknowledgeResult write(String message, ContentType contentType) throws InterruptedException, IllegalStateException, UnsupportedEncodingException {
+	
+		if(message != null && message.trim().length() > 0) {
+			AcknowledgeResult ackResult = new AcknowledgeResult();
+	
+			// Create the POST that will be sent to the server
+			HttpPost postRequest = new HttpPost(buildWriteURL());
+			StringEntity input = new StringEntity(message);
+			postRequest.setEntity(input);
+	
+			// Apigee API key used for authentication on Apigee
+			postRequest.addHeader("apikey", apikey);
+			postRequest.addHeader("Content-Type", contentType.getMimeType());
+	
+			// Exit condition for the loop. We should exit if the call is successful, or if we hit the maximum number of retries
+			boolean done = false;
+			int failureCount = 0;
+	
+			do {
+				try {
+					// Call the service
+					HttpResponse getResponse = httpClient.execute(postRequest);
+	
+					//Set the status code.  If we retry for some reason this will get overwritten
+					ackResult.setStatusCode(getResponse.getStatusLine().getStatusCode());
+	
+					// Check to make sure we received a response in the 200 Family
+					if (Family.familyOf(getResponse.getStatusLine().getStatusCode()) == Response.Status.Family.SUCCESSFUL) {
+						failureCount = 0;
+						done = true;
+						ackResult.setSuccess(true);
+					}
+					// Special status message to indicate the message is no longer there
+					else if (getResponse.getStatusLine().getStatusCode() == Response.Status.GONE.getStatusCode()) {
+						failureCount = 0;
+						done = true;
+						ackResult.setSuccess(true);
+					}
+					// This will capture all the 500-level Server Error Status Codes.
+					else if (Family.familyOf(getResponse.getStatusLine().getStatusCode()) == Response.Status.Family.SERVER_ERROR) {
+						//Increment the failure counter.  Once we hit the retry limit we will want to break from the loop regardless
+						//of whether the calls were successful or not.
+						failureCount++;
+	
+						//Retrieve the Response Body (if any) and log the body and status code
+						String responseBody = EntityUtils.toString(getResponse.getEntity());
+						logger.debug("Status Code: {}, Response Body: {}", getResponse.getStatusLine().getStatusCode(), responseBody);
+	
+						//If we have reached the max number of retries we should log that and set the flag to true so we will break 
+						if (failureCount >= maxFailures) {
+							logger.debug("Too many errors, quiting.");
+	
+							done = true;
+							ackResult.setSuccess(false);
+						}
+						//Otherwise pause the application for a the SLEEP_DURATION to provide time for things to recover before trying again.
+						else {
+							logger.debug("Sleeping for {} milliseconds before reprocessing.", (sleepDuration * failureCount));
+		
+							Thread.sleep(sleepDuration * failureCount);
+						}
+					}
+					// There was an unexpected result that should be handled in some way depending on your use case
+					else {
+						String responseBody = EntityUtils.toString(getResponse.getEntity());
+						logger.debug("Status Code: {}, Response Body: {}", getResponse.getStatusLine().getStatusCode(), responseBody);
+	
+						done = true;
+						ackResult.setSuccess(false);
+					}
+				}
+				catch(Exception e) {
+					//Increment the failure counter.  Once we hit the retry limit we will want to break from the loop regardless
+					//of whether the calls were successful or not.
+					failureCount++;
+	
+					//Retrieve the Response Body (if any) and log the body and status code
+					logger.debug("Status Code: {}, Response Body: {}", e.getMessage(), e);
+	
+					//If we have reached the max number of retries we should log that and set the flag to true so we will break 
+					if (failureCount >= maxFailures) {
+						logger.debug("Too many errors, quiting.");
+	
+						done = true;
+						ackResult.setSuccess(false);
+					}
+					//Otherwise pause the application for a the SLEEP_DURATION to provide time for things to recover before trying again.
+					else {
+						logger.debug("Sleeping for {} milliseconds before reprocessing.", (sleepDuration * failureCount));
+	
+						Thread.sleep(sleepDuration * failureCount);
+					}
+				}
+			} while (!done);
+	
+			if(ackResult.isSuccess()) {
+				messageId = null;
+			}
+			return ackResult;
+		}
+		else {
+			throw new IllegalStateException("Message cannot be null or blank.");
+		}
 	}
 }

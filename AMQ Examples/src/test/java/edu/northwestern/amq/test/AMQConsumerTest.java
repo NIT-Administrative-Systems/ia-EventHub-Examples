@@ -7,6 +7,7 @@ import edu.northwestern.amq.AMQConsumer;
 import edu.northwestern.amq.AcknowledgeResult;
 import edu.northwestern.amq.MessageResult;
 
+
 public class AMQConsumerTest {
 
 	private AMQConsumer amqConsumer = null;
@@ -50,4 +51,17 @@ public class AMQConsumerTest {
 
 		amqConsumer.acknowledgeMessage();
 	}
+
+//	@Test
+//	public void sentryTest() throws Exception {
+//		Sentry.init("https://be17fdb221094feca88a31a4956ad635@sentry.io/1316346");
+//
+//		try {
+//			throw new NullPointerException("This is a test exception");
+//		}
+//		catch(Exception e) {
+//			Sentry.capture(e);
+//		}
+//		
+//	}
 }

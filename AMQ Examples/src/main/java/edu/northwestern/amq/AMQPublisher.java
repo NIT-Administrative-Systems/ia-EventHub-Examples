@@ -14,10 +14,12 @@ import javax.xml.bind.Unmarshaller;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.entity.ContentType;
+import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 
@@ -184,6 +186,9 @@ public class AMQPublisher extends AMQClient {
 	 * @throws Exception
 	 */
 	public MessageResult getMessage() throws InterruptedException {
+		
+//		HttpRequestRetryHandler
+		
 		
 		if(!autoAcknowledge && messageId != null) {
 			throw new IllegalStateException("You should Acknowledge the previous message before requesting a new one.");
