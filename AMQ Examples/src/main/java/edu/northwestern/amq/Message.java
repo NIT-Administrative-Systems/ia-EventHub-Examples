@@ -15,24 +15,6 @@ public class Message {
 
 	}
 
-//	public Message(String message) {
-//		if (message != null) {
-//			data = message.getText();
-//			deliveryDate = message.getJMSTimestamp();
-//			expirationDate = message.getJMSExpiration();
-//
-//			try {
-//				deliveryAttempts = message.getIntProperty(AmazonMQHelper.DELIVERY_ATTEMPTS_PROPERTY);
-//			}
-//			catch (Exception e) {
-//				deliveryAttempts = 0;
-//			}
-//
-//			contentType = message.getStringProperty("Content-Type");
-//			messageId = message.getJMSMessageID();
-//		}
-//	}
-
 	@JsonProperty("data")
 	public String getData() {
 		return data;
