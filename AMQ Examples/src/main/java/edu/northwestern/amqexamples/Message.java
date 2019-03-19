@@ -1,7 +1,10 @@
 package edu.northwestern.amqexamples;
 
+import javax.xml.bind.annotation.XmlRootElement;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+@XmlRootElement(name = "Message")
 public class Message {
 
 	private String data;
