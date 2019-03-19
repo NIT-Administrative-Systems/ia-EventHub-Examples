@@ -1,4 +1,4 @@
-package edu.northwestern.amq;
+package edu.northwestern.amqexamples;
 
 import java.util.regex.Pattern;
 
@@ -82,8 +82,8 @@ public class WebhookExample {
 	
 	/**
 	 * This is an example implementation of a Webhook Listener.  It makes use of an annotation that calls a
-	 * filter that handles Authentication.  It is not necessary to use an annotation you could also simply 
-	 * use if..else logic in the method itself.
+	 * filter that handles Authentication.  It is not necessary to use an annotation you could also use API Gateway
+	 * or similar, or simply if..else logic in the method itself.
 	 * 
 	 * @param messageBody
 	 * @param apikey
@@ -94,7 +94,7 @@ public class WebhookExample {
 	@POST
 
 	//The path this will listen on and respond to requests from
-	@Path("/test/apikey")
+	@Path("/physical-recognition/location")
 
 	//The Content-Types that are allowed to be passed in
 	@Consumes({ MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN })
@@ -113,23 +113,8 @@ public class WebhookExample {
 		//Print the Message being passed in
 		webhookLogger.info("Body + " + messageBody);
 
-		//If the message contains the word "Fail" respond with a HTTP 500.  
-		//This will cause Event to resend the message after a brief pause
-		if (Pattern.compile(Pattern.quote("Fail"), Pattern.CASE_INSENSITIVE).matcher(messageBody).find()) {
-			Response response = Response.serverError().entity(new ErrorMessage("Message Failed", 500)).build();
-			return response;
-		}
-		//If the message contains the word "Poison" respond with a HTTP 406
-		//EventHub will move this message to your DLQ (dead letter queue) and continue processing any additional messages
-		else if (Pattern.compile(Pattern.quote("Poison"), Pattern.CASE_INSENSITIVE).matcher(messageBody).find()) {
-			Response response = Response.notAcceptable(null).build();
-			return response;
-		}
-		//EventHub treats all response in the 2XX range as success so the message will be removed from your queue and 
-		//processing will continue normally
-		else {
-			//Message is removed from the queue and processing continues normally.
-			return Response.ok().entity(new SimpleResponse("Success")).build();
-		}
+		
+
+		return Response.ok().entity(new SimpleResponse("Success")).build();
 	}
 }

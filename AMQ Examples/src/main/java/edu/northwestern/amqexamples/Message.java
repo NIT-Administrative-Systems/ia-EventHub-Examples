@@ -1,4 +1,4 @@
-package edu.northwestern.amq;
+package edu.northwestern.amqexamples;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

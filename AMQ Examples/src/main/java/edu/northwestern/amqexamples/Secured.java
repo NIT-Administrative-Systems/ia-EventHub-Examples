@@ -1,4 +1,4 @@
-package edu.northwestern.amq;
+package edu.northwestern.amqexamples;
 
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
